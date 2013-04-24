@@ -7,8 +7,10 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 
@@ -17,6 +19,7 @@ import org.apache.commons.logging.LogFactory;
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
+import com.gargoylesoftware.htmlunit.html.HtmlForm;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 
@@ -26,7 +29,8 @@ public class Fuzzer {
 	private WebClient webClient;
 	private HashSet<Cookie> discoveredCookies;
 	private HashSet<URL> discoveredURLs;
-
+	private HashMap<URL, List<HtmlForm>> discoveredForms;
+	
 	Fuzzer() {
 		LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
 
@@ -38,6 +42,7 @@ public class Fuzzer {
 		minimumRequestInterval = 0;
 		discoveredCookies = new HashSet<Cookie>();
 		discoveredURLs = new HashSet<URL>();
+		discoveredForms = new HashMap<URL, List<HtmlForm>>();
 		webClient = new WebClient();
 
 		// Configure the web client.
@@ -48,8 +53,7 @@ public class Fuzzer {
 		webClient.closeAllWindows();
 	}
 
-	public HtmlPage getPage(String url) throws IOException,
-			MalformedURLException {
+	public HtmlPage getPage(String url) throws IOException, MalformedURLException {
 		return getPage(new URL(url));
 	}
 
@@ -58,6 +62,7 @@ public class Fuzzer {
 		HtmlPage page = webClient.getPage(url);
 		discoveredURLs.add(url);
 		discoverCookies();
+		discoverForms(page);
 		return page;
 	}
 
@@ -68,15 +73,21 @@ public class Fuzzer {
 		for (Cookie cookie : discoveredCookies) {
 			System.out.println(cookie.toString());
 		}
-		System.out
-				.println("==================================================");
+		System.out.println("==================================================");
 		System.out.println();
 		System.out.println("All Links Discovered:");
 		for (URL u : discoveredURLs) {
 			System.out.println(u.toString());
 		}
-		System.out
-				.println("==================================================");
+		System.out.println("==================================================");
+		System.out.println("All discovered forms:");
+		for (Map.Entry<URL, List<HtmlForm>> entry : discoveredForms.entrySet()) {
+			System.out.println("\nPage: " + entry.getKey());
+			for (HtmlForm form : entry.getValue()) {
+				System.out.println("    " + form.toString());
+			}
+		}
+		System.out.println("==================================================");
 	}
 
 	public long getMinimumRequestInterval() {
@@ -178,12 +189,15 @@ public class Fuzzer {
 			discoveredCookies.addAll(cookies);
 		}
 	}
-
-	public static void main(String[] args)
-			throws FailingHttpStatusCodeException, MalformedURLException,
-			IOException {
+	
+	private void discoverForms(HtmlPage page) {
+		List<HtmlForm> forms = page.getForms();
+		discoveredForms.put(page.getUrl(), forms);
+	}
+	
+	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
 		Fuzzer theFuzz = new Fuzzer();
-		//theFuzz.crawlURL(new URL("http://www.se.rit.edu/~se463/"));
+		theFuzz.getPage("http://www.google.com/");
 		theFuzz.printReport();
 		theFuzz.close();
 	}
