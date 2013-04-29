@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Date;
@@ -32,6 +31,8 @@ public class Fuzzer {
 	private WebClient webClient;
 	private HashSet<Cookie> discoveredCookies;
 	private HashSet<URL> discoveredURLs;
+	private HashSet<URL> discoveredPages;
+	private HashMap<URL, List<String>> discoveredPageInputs;
 	private HashMap<URL, List<HtmlForm>> discoveredForms;
 	
 	Fuzzer() {
@@ -45,6 +46,8 @@ public class Fuzzer {
 		minimumRequestInterval = 0;
 		discoveredCookies = new HashSet<Cookie>();
 		discoveredURLs = new HashSet<URL>();
+		discoveredPages = new HashSet<URL>();
+		discoveredPageInputs = new HashMap<URL, List<String>>();
 		discoveredForms = new HashMap<URL, List<HtmlForm>>();
 		webClient = new WebClient();
 
@@ -52,35 +55,65 @@ public class Fuzzer {
 		webClient.setJavaScriptEnabled(true);
 	}
 
+	/**
+	 * Called when the fuzzer is no longer to be used.
+	 */
 	public void close() {
 		webClient.closeAllWindows();
 	}
 
+	/**
+	 * Convenience method for getPage(URL)
+	 * 
+	 * @param url - desired url as a string
+	 * @return the page which the url corresponds to.
+	 * @throws IOException
+	 * @throws MalformedURLException
+	 */
 	public HtmlPage getPage(String url) throws IOException, MalformedURLException {
 		return getPage(new URL(url));
 	}
 
+	/**
+	 * Fuzzer's designated method for requesting pages via the web client. Will perform
+	 * all the various housekeeping tasks related to processing a single page.
+	 * 
+	 * @param url - the desired url
+	 * @return the page which the url corresponds to.
+	 * @throws IOException
+	 * @throws MalformedURLException
+	 */
 	public HtmlPage getPage(URL url) throws IOException, MalformedURLException {
 		waitForMinimumRequestTimeout();
 		HtmlPage page = webClient.getPage(url);
-		discoveredURLs.add(url);
+		parseURL(url);
 		discoverCookies();
 		discoverForms(page);
 		return page;
 	}
 
+	/**
+	 * Prints to standard out a report of this fuzzer which displays the current
+	 * aggregation of the data it's collected.
+	 */
 	public void printReport() {
-		System.out
-				.println("==================================================");
+		System.out.println("==================================================");
 		System.out.println("All discovered cookies:");
 		for (Cookie cookie : discoveredCookies) {
 			System.out.println(cookie.toString());
 		}
 		System.out.println("==================================================");
-		System.out.println();
 		System.out.println("All Links Discovered:");
 		for (URL u : discoveredURLs) {
 			System.out.println(u.toString());
+		}
+		System.out.println("==================================================");
+		System.out.println("All discovered pages with inputs:");
+		for (URL url : discoveredPages) {
+			System.out.println("\nPage: " + url.toString());
+			for (String parameter : discoveredPageInputs.get(url)) {
+				System.out.println("    " + parameter);
+			}
 		}
 		System.out.println("==================================================");
 		System.out.println("All discovered forms:");
@@ -93,28 +126,26 @@ public class Fuzzer {
 		System.out.println("==================================================");
 	}
 
+	/**
+	 * The minimum length of time before the fuzzer can make another web request.
+	 * @return the interval in milliseconds
+	 */
 	public long getMinimumRequestInterval() {
 		return minimumRequestInterval;
 	}
 
+	/**
+	 * Set the minimum length of time before the fuzzer can make another web request.
+	 * @param minimumRequestInterval - the new length of time in milliseconds
+	 */
 	public void setMinimumRequestInterval(long minimumRequestInterval) {
 		this.minimumRequestInterval = minimumRequestInterval;
 	}
 
-	private void waitForMinimumRequestTimeout() {
-		if (lastRequestDate != null) {
-			long timeSince = (new Date()).getTime() - lastRequestDate.getTime();
-			if (timeSince < minimumRequestInterval) {
-				try {
-					Thread.sleep(minimumRequestInterval - timeSince);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-		}
-		lastRequestDate = new Date();
-	}
-
+	/**
+	 * Recursively crawls a given url for linked pages, ignoring previously seen urls.
+	 * @param url - the url which to crawl.
+	 */
 	public void crawlURL(URL url) {
 		List<URL> urls = getLinks(url);
 		for (URL u : urls) {
@@ -139,7 +170,7 @@ public class Fuzzer {
 			uri = uri.normalize();
 			url = uri.toURL();
 			page = getPage(url);
-		} catch (IOException | ClassCastException | FailingHttpStatusCodeException | URISyntaxException e1) {
+		} catch (Exception e) {
 			System.err.println("BAD URL: " + url);
 			return new ArrayList<URL>();
 		}
@@ -177,14 +208,70 @@ public class Fuzzer {
 		return temp;
 	}
 	
+	/**
+	 * Removes the query and fragment components of a url.
+	 * 
+	 * @param url - the url to clean
+	 * @return a url with the query and fragment removed.
+	 */
 	private URL cleanParameters(URL url){
 		try {
+			// TODO: What happens if the url has a port?
 			return new URL(url.getProtocol() + "://" +url.getHost() + url.getPath());
 		} catch (MalformedURLException e) {
 			return null;
 		}
 	}
 
+	/**
+	 * Method which ensures that the fuzzer does not make requests at a faster rate
+	 * than specified using the minimum request interval.
+	 */
+	private void waitForMinimumRequestTimeout() {
+		if (lastRequestDate != null) {
+			long timeSince = (new Date()).getTime() - lastRequestDate.getTime();
+			if (timeSince < minimumRequestInterval) {
+				try {
+					Thread.sleep(minimumRequestInterval - timeSince);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		lastRequestDate = new Date();
+	}
+	
+	/**
+	 * Keeps track of all the URLs which have been requested by the fuzzer, as well as
+	 * keeping track of the base url (sans query). GET parameters are recorded as inputs.
+	 * 
+	 * @param url - the url which is to be processed.
+	 * @throws MalformedURLException
+	 */
+	private void parseURL(URL url) throws MalformedURLException {
+		// Keep track that we've seen this URL being asked for.
+		discoveredURLs.add(url);
+		
+		// Keep track of the base URL of the page (sans query)
+		URL parsedURL = new URL(url.toString().split("\\?")[0].split("#")[0]);
+		discoveredPages.add(parsedURL);
+		
+		// Discover the inputs for the page.
+	    List<String> pageParameters = new ArrayList<String>();
+		String query = url.getQuery();
+		if (query != null) {
+			String[] parameterPairs = query.split("&");
+		    for (String pair : parameterPairs) {
+		        pageParameters.add(pair.substring(0, pair.indexOf("=")));
+		    }
+		}
+	    
+	    discoveredPageInputs.put(parsedURL, pageParameters);
+	}
+	
+	/**
+	 * Grabs the current cookies from the web client and keeps track of them.
+	 */
 	private void discoverCookies() {
 		Set<Cookie> cookies = webClient.getCookieManager().getCookies();
 		if (cookies != null && cookies.size() > 0) {
@@ -192,11 +279,23 @@ public class Fuzzer {
 		}
 	}
 	
+	/**
+	 * Grabs the forms which are available on the given page.
+	 * 
+	 * @param page - the page which to inspect for forms.
+	 */
 	private void discoverForms(HtmlPage page) {
 		List<HtmlForm> forms = page.getForms();
 		discoveredForms.put(page.getUrl(), forms);
 	}
 	
+	/**
+	 * Given an external list of common unlinked pages which may be accessible
+	 * from same path of a given url, determines if those pages exist.
+	 * 
+	 * @param baseUrl - the url with the path to guess the pages at.
+	 * @return
+	 */
 	public List<HtmlPage> guessPages(URL baseUrl){
 		ArrayList<HtmlPage> retVal = new ArrayList<HtmlPage>();
 		Scanner s = null;
@@ -205,7 +304,14 @@ public class Fuzzer {
 			while(s.hasNextLine()){
 				try{
 					retVal.add(getPage(addToURL(baseUrl, s.nextLine())));
-				}catch(IOException e){}
+				} catch (IOException e) {
+					
+				} catch (FailingHttpStatusCodeException e) {
+					// Ignore 404, file not found because it was a guess.
+					if (e.getStatusCode() != 404) {
+						throw e;
+					}
+				}
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -214,10 +320,10 @@ public class Fuzzer {
 		}
 		return retVal;
 	}
-	
+
 	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
 		Fuzzer theFuzz = new Fuzzer();
-		HtmlPage p = theFuzz.getPage("http://www.google.com/");
+		HtmlPage p = theFuzz.getPage("http://www.google.com/?a=b&c=v#thing");
 		
 		theFuzz.guessPages(p.getUrl());
 		
