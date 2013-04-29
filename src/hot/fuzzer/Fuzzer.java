@@ -98,16 +98,6 @@ public class Fuzzer {
 	 */
 	public void printReport() {
 		System.out.println("==================================================");
-		System.out.println("All discovered cookies:");
-		for (Cookie cookie : discoveredCookies) {
-			System.out.println(cookie.toString());
-		}
-		System.out.println("==================================================");
-		System.out.println("All Links Discovered:");
-		for (URL u : discoveredURLs) {
-			System.out.println(u.toString());
-		}
-		System.out.println("==================================================");
 		System.out.println("All discovered pages with inputs:");
 		for (URL url : discoveredPages) {
 			System.out.println("\nPage: " + url.toString());
@@ -123,6 +113,17 @@ public class Fuzzer {
 				System.out.println("    " + form.toString());
 			}
 		}
+		System.out.println("==================================================");
+		System.out.println("All discovered cookies:");
+		for (Cookie cookie : discoveredCookies) {
+			System.out.println(cookie.toString());
+		}
+		System.out.println("==================================================");
+		System.out.println("All links discovered:");
+		for (URL u : discoveredURLs) {
+			System.out.println(u.toString());
+		}
+		
 		System.out.println("==================================================");
 	}
 
