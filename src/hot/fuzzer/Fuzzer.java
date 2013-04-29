@@ -1,5 +1,7 @@
 package hot.fuzzer;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -11,6 +13,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
 
@@ -140,39 +143,38 @@ public class Fuzzer {
 			System.err.println("BAD URL: " + url);
 			return new ArrayList<URL>();
 		}
-		URL temp = null;
 		for (HtmlAnchor a : page.getAnchors()) {
-			try {
-				String href = a.getHrefAttribute();
-				temp = null;
-				try{temp = new URL(href);}catch(MalformedURLException e){}
-				if(temp != null && !temp.getProtocol().startsWith("http")){
-					System.err.println("Ignoring non web protocols: " + temp);
-					continue;
-				}
-				if(temp != null){
-					if(temp.getAuthority().equalsIgnoreCase(url.getAuthority())){
-						temp = cleanParameters(temp);
-						if(temp != null)
-							retVal.add(temp);
-					}
-				}else if(href.startsWith("/") && url.toString().endsWith("/")){
-					temp = new URL(page.getUrl() + (href.substring(1)));
-					temp = cleanParameters(temp);
-					if(temp != null)
-						retVal.add(temp);
-				}else if(href.startsWith("#")){
-				}else{
-					temp = new URL(url.toString().substring(0, url.toString().lastIndexOf('/')+1) + href);
-					temp = cleanParameters(temp);
-					if(temp != null)
-						retVal.add(temp);
-				}
-			} catch (MalformedURLException e) {
-			}
+			URL pageUrl = page.getUrl();
+			String href = a.getHrefAttribute();
+			URL ret = addToURL(pageUrl, href);
+			if(ret != null)
+				retVal.add(ret);
 		}
 
 		return new ArrayList<URL>(retVal);
+	}
+	
+	private URL addToURL(URL pageUrl, String ref){
+		URL temp = null;
+		try{
+			try{temp = new URL(ref);}catch(MalformedURLException e){}
+
+			if(temp != null){
+				if(temp.getAuthority().equalsIgnoreCase(pageUrl.getAuthority())){
+					temp = cleanParameters(temp);
+				}
+			}else if(ref.startsWith("/") && pageUrl.toString().endsWith("/")){
+				temp = new URL(pageUrl + (ref.substring(1)));
+				temp = cleanParameters(temp);
+			}else if(ref.startsWith("#")){
+			}else{
+				temp = new URL(pageUrl.toString().substring(0, pageUrl.toString().lastIndexOf('/')+1) + ref);
+				temp = cleanParameters(temp);
+			}
+		}catch(MalformedURLException e){
+			
+		}
+		return temp;
 	}
 	
 	private URL cleanParameters(URL url){
@@ -195,9 +197,30 @@ public class Fuzzer {
 		discoveredForms.put(page.getUrl(), forms);
 	}
 	
+	public List<HtmlPage> guessPages(URL baseUrl){
+		ArrayList<HtmlPage> retVal = new ArrayList<HtmlPage>();
+		Scanner s = null;
+		try {
+			s = new Scanner(new File("PageGuessing.txt"));
+			while(s.hasNextLine()){
+				try{
+					retVal.add(getPage(addToURL(baseUrl, s.nextLine())));
+				}catch(IOException e){}
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}finally{
+			if(s!=null) s.close();
+		}
+		return retVal;
+	}
+	
 	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
 		Fuzzer theFuzz = new Fuzzer();
-		theFuzz.getPage("http://www.google.com/");
+		HtmlPage p = theFuzz.getPage("http://www.google.com/");
+		
+		theFuzz.guessPages(p.getUrl());
+		
 		theFuzz.printReport();
 		theFuzz.close();
 	}
