@@ -19,9 +19,11 @@ import java.util.logging.Level;
 import org.apache.commons.logging.LogFactory;
 
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
+import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
 import com.gargoylesoftware.htmlunit.html.HtmlForm;
+import com.gargoylesoftware.htmlunit.html.HtmlInput;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 
@@ -150,7 +152,7 @@ public class Fuzzer {
 	public void crawlURL(URL url) {
 		List<URL> urls = getLinks(url);
 		for (URL u : urls) {
-			if (!discoveredURLs.contains(u))
+			if (!discoveredURLs.contains(u) && u.getHost().equals(url.getHost()))
 				crawlURL(u);
 		}
 	}
@@ -321,12 +323,27 @@ public class Fuzzer {
 		}
 		return retVal;
 	}
+	
+	public HtmlPage logIntoDVWA() throws MalformedURLException, IOException{
+		String host = "http://10.211.55.3/";
+		String path = "dvwa/login.php";
+		
+		HtmlPage p = getPage(host+path);
+		
+		((HtmlInput) p.getElementByName("username")).setValueAttribute("admin");
+		((HtmlInput) p.getElementByName("password")).setValueAttribute("password");
+		
+		return getPage(p.getElementByName("Login").click().getUrl());
+	}
 
 	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
 		Fuzzer theFuzz = new Fuzzer();
-		HtmlPage p = theFuzz.getPage("http://www.google.com/?a=b&c=v#thing");
 		
-		theFuzz.guessPages(p.getUrl());
+		HtmlPage p = theFuzz.logIntoDVWA();
+		
+		p = theFuzz.getPage("http://10.211.55.3/dvwa/index.php");
+		
+		theFuzz.crawlURL(new URL("http://10.211.55.3/dvwa/index.php"));
 		
 		theFuzz.printReport();
 		theFuzz.close();
