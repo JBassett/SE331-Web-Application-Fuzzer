@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
@@ -19,7 +20,6 @@ import java.util.logging.Level;
 import org.apache.commons.logging.LogFactory;
 
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
-import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
 import com.gargoylesoftware.htmlunit.html.HtmlForm;
@@ -325,15 +325,51 @@ public class Fuzzer {
 	}
 	
 	public HtmlPage logIntoDVWA() throws MalformedURLException, IOException{
-		String host = "http://10.211.55.3/";
+		return logIntoDVWA("admin", "password");
+	}
+	
+	public HtmlPage logIntoDVWA(String username, String password) throws MalformedURLException, IOException{
+		String host = "http://localhost/";
 		String path = "dvwa/login.php";
 		
 		HtmlPage p = getPage(host+path);
 		
-		((HtmlInput) p.getElementByName("username")).setValueAttribute("admin");
-		((HtmlInput) p.getElementByName("password")).setValueAttribute("password");
+		((HtmlInput) p.getElementByName("username")).setValueAttribute(username);
+		((HtmlInput) p.getElementByName("password")).setValueAttribute(password);
 		
 		return getPage(p.getElementByName("Login").click().getUrl());
+	}
+	
+	public List<Map.Entry<String,String>> guessAccounts() throws MalformedURLException, IOException{
+		HashSet<Map.Entry<String,String>> workingCombos = new HashSet<Map.Entry<String,String>>();
+		Scanner usernames = null, passwords = null;
+		String username, password;
+		try {
+			usernames = new Scanner(new File("UsernameGuessing.txt"));
+			while(usernames.hasNextLine()){
+				username = usernames.nextLine();
+				passwords = new Scanner(new File("PasswordGuessing.txt"));
+				while(passwords.hasNextLine()){
+					password = passwords.nextLine();
+					if(logIntoDVWA(username, password).getUrl().toString().endsWith("index.php"))
+						workingCombos.add(new java.util.AbstractMap.SimpleEntry<String, String>(username,password));
+					
+				}
+			}
+			
+			
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally{
+			if(usernames != null)
+				usernames.close();
+			if(passwords != null)
+				passwords.close();
+		}
+		
+		
+		return new ArrayList<Map.Entry<String,String>>(workingCombos);
 	}
 
 	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
@@ -341,9 +377,9 @@ public class Fuzzer {
 		
 		HtmlPage p = theFuzz.logIntoDVWA();
 		
-		p = theFuzz.getPage("http://10.211.55.3/dvwa/index.php");
+		p = theFuzz.getPage("http://localhost/dvwa/index.php");
 		
-		theFuzz.crawlURL(new URL("http://10.211.55.3/dvwa/index.php"));
+		theFuzz.crawlURL(p.getUrl());
 		
 		theFuzz.printReport();
 		theFuzz.close();
