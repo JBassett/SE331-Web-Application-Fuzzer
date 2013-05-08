@@ -18,6 +18,7 @@ import java.util.logging.Level;
 
 import org.apache.commons.logging.LogFactory;
 
+import com.gargoylesoftware.htmlunit.CollectingAlertHandler;
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
@@ -38,6 +39,8 @@ public class Fuzzer {
 	private HashMap<String, Set<URL>> leakedSensitiveData;
 	private ArrayList<String> sensitiveDataList;
 	private ArrayList<String> fuzzVectors;
+	private ArrayList<String> collectedAlerts;
+	private HashMap<URL, List<String>> alertsByURL;
 	
 	Fuzzer() {
 		LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
@@ -56,6 +59,8 @@ public class Fuzzer {
 		leakedSensitiveData = new HashMap<String, Set<URL>>();
 		sensitiveDataList = new ArrayList<String>();
 		fuzzVectors = new ArrayList<String>();
+		collectedAlerts = new ArrayList<String>();
+		alertsByURL = new HashMap<URL, List<String>>();
 		webClient = new WebClient();
 
 		// Initialize the fuzzer.
@@ -64,6 +69,7 @@ public class Fuzzer {
 		
 		// Configure the web client.
 		webClient.setJavaScriptEnabled(true);
+		webClient.setAlertHandler(new CollectingAlertHandler(collectedAlerts));
 	}
 
 	/**
@@ -96,7 +102,12 @@ public class Fuzzer {
 	 */
 	public HtmlPage getPage(URL url) throws IOException, MalformedURLException {
 		waitForMinimumRequestTimeout();
+		collectedAlerts.clear();
 		HtmlPage page = webClient.getPage(url);
+		if (collectedAlerts.size() > 0) {
+			List<String> alerts = new ArrayList<String>(collectedAlerts);
+			alertsByURL.put(url, alerts);
+		}
 		parseURL(url);
 		discoverCookies();
 		discoverForms(page);
@@ -110,10 +121,10 @@ public class Fuzzer {
 	 */
 	public void printReport() {
 		System.out.println("==================================================");
-		System.out.println("All discovered pages with inputs:");
-		for (URL url : discoveredPages) {
-			System.out.println("\nPage: " + url.toString());
-			for (String parameter : discoveredPageInputs.get(url)) {
+		System.out.println("All pages discovered, with inputs:");
+		for (URL u : discoveredURLs) {
+			System.out.println(u.toString());
+			for (String parameter : discoveredPageInputs.get(u)) {
 				System.out.println("    " + parameter);
 			}
 		}
@@ -131,16 +142,19 @@ public class Fuzzer {
 			System.out.println(cookie.toString());
 		}
 		System.out.println("==================================================");
-		System.out.println("All links discovered:");
-		for (URL u : discoveredURLs) {
-			System.out.println(u.toString());
-		}
-		System.out.println("==================================================");
 		System.out.println("All sensitive data which was leaked:");
 		for (Map.Entry<String, Set<URL>> entry : leakedSensitiveData.entrySet()) {
 			System.out.println("\nKeyword: " + entry.getKey());
 			for (URL form : entry.getValue()) {
 				System.out.println("    " + form.toString());
+			}
+		}
+		System.out.println("==================================================");
+		System.out.println("Alerts which occurred on pages:");
+		for (Map.Entry<URL, List<String>> entry : alertsByURL.entrySet()) {
+			System.out.println("\nURL: " + entry.getKey().toString());
+			for (String alertText : entry.getValue()) {
+				System.out.println("    " + alertText);
 			}
 		}
 		System.out.println("==================================================");
