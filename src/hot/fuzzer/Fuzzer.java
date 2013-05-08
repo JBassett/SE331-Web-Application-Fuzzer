@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
@@ -36,6 +35,8 @@ public class Fuzzer {
 	private HashSet<URL> discoveredPages;
 	private HashMap<URL, List<String>> discoveredPageInputs;
 	private HashMap<URL, List<HtmlForm>> discoveredForms;
+	private HashMap<String, Set<URL>> leakedSensitiveData;
+	private HashSet<String> sensitiveDataList;
 	
 	Fuzzer() {
 		LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
@@ -51,8 +52,13 @@ public class Fuzzer {
 		discoveredPages = new HashSet<URL>();
 		discoveredPageInputs = new HashMap<URL, List<String>>();
 		discoveredForms = new HashMap<URL, List<HtmlForm>>();
+		leakedSensitiveData = new HashMap<String, Set<URL>>();
+		sensitiveDataList = new HashSet<String>();
 		webClient = new WebClient();
 
+		// Initialize the fuzzer.
+		loadSensitiveDataList();
+		
 		// Configure the web client.
 		webClient.setJavaScriptEnabled(true);
 	}
@@ -91,6 +97,7 @@ public class Fuzzer {
 		parseURL(url);
 		discoverCookies();
 		discoverForms(page);
+		checkPageForSensitiveData(page);
 		return page;
 	}
 
@@ -125,7 +132,14 @@ public class Fuzzer {
 		for (URL u : discoveredURLs) {
 			System.out.println(u.toString());
 		}
-		
+		System.out.println("==================================================");
+		System.out.println("All sensitive data which was leaked:");
+		for (Map.Entry<String, Set<URL>> entry : leakedSensitiveData.entrySet()) {
+			System.out.println("\nKeyword: " + entry.getKey());
+			for (URL form : entry.getValue()) {
+				System.out.println("    " + form.toString());
+			}
+		}
 		System.out.println("==================================================");
 	}
 
@@ -290,6 +304,43 @@ public class Fuzzer {
 	private void discoverForms(HtmlPage page) {
 		List<HtmlForm> forms = page.getForms();
 		discoveredForms.put(page.getUrl(), forms);
+	}
+	
+	/**
+	 * Method to run on fuzzer initialization which loads the list of sensitive data.
+	 */
+	private void loadSensitiveDataList() {
+		Scanner scanner = null;
+		try {
+			scanner = new Scanner(new File("SensitiveData.txt"));
+			while(scanner.hasNextLine()) {
+				sensitiveDataList.add(scanner.nextLine());
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} finally {
+			if (scanner != null)
+				scanner.close();
+		}
+	}
+	
+	/**
+	 * Checks a page for sensitive keywords which should not exist on any pages.
+	 * @param page - the page to check for senstive data.
+	 */
+	private void checkPageForSensitiveData(HtmlPage page) {
+		String pageText = page.asText();
+		for (String sensitiveString : sensitiveDataList) {
+			if (pageText.contains(sensitiveString)) {
+				Set<URL> urls = leakedSensitiveData.get(sensitiveString);
+				if (urls == null) {
+					urls = new HashSet<URL>();
+				}
+				urls.add(page.getUrl());
+				leakedSensitiveData.put(sensitiveString, urls);
+			}
+		}
+		
 	}
 	
 	/**
