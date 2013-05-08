@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Date;
@@ -37,7 +36,8 @@ public class Fuzzer {
 	private HashMap<URL, List<String>> discoveredPageInputs;
 	private HashMap<URL, List<HtmlForm>> discoveredForms;
 	private HashMap<String, Set<URL>> leakedSensitiveData;
-	private HashSet<String> sensitiveDataList;
+	private ArrayList<String> sensitiveDataList;
+	private ArrayList<String> fuzzVectors;
 	
 	Fuzzer() {
 		LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
@@ -54,11 +54,13 @@ public class Fuzzer {
 		discoveredPageInputs = new HashMap<URL, List<String>>();
 		discoveredForms = new HashMap<URL, List<HtmlForm>>();
 		leakedSensitiveData = new HashMap<String, Set<URL>>();
-		sensitiveDataList = new HashSet<String>();
+		sensitiveDataList = new ArrayList<String>();
+		fuzzVectors = new ArrayList<String>();
 		webClient = new WebClient();
 
 		// Initialize the fuzzer.
-		loadSensitiveDataList();
+		loadFileIntoList("FuzzVectors.txt", fuzzVectors);
+		loadFileIntoList("SensitiveData.txt", sensitiveDataList);
 		
 		// Configure the web client.
 		webClient.setJavaScriptEnabled(true);
@@ -313,16 +315,19 @@ public class Fuzzer {
 		List<HtmlForm> forms = page.getForms();
 		discoveredForms.put(page.getUrl(), forms);
 	}
-	
+
 	/**
-	 * Method to run on fuzzer initialization which loads the list of sensitive data.
+	 * Method to run on fuzzer initialization which loads a list given a filename
+	 * and a list to add each line to.
+	 * @param filename - the name of the file to read in.
+	 * @param list - the list add each line to.
 	 */
-	private void loadSensitiveDataList() {
+	private void loadFileIntoList(String filename, List<String> list) {
 		Scanner scanner = null;
 		try {
-			scanner = new Scanner(new File("SensitiveData.txt"));
+			scanner = new Scanner(new File(filename));
 			while(scanner.hasNextLine()) {
-				sensitiveDataList.add(scanner.nextLine());
+				list.add(scanner.nextLine());
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -337,9 +342,9 @@ public class Fuzzer {
 	 * @param page - the page to check for senstive data.
 	 */
 	private void checkPageForSensitiveData(HtmlPage page) {
-		String pageText = page.asText();
+		String pageText = page.asText().toUpperCase();
 		for (String sensitiveString : sensitiveDataList) {
-			if (pageText.contains(sensitiveString)) {
+			if (pageText.contains(sensitiveString.toUpperCase())) {
 				Set<URL> urls = leakedSensitiveData.get(sensitiveString);
 				if (urls == null) {
 					urls = new HashSet<URL>();
@@ -348,7 +353,6 @@ public class Fuzzer {
 				leakedSensitiveData.put(sensitiveString, urls);
 			}
 		}
-		
 	}
 	
 	/**

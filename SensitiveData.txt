@@ -1,3 +1,6 @@
-low
-medium
-high
+mysql
+apache
+catalina
+tomcat
+error
+XSS
