@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Date;
@@ -195,7 +196,14 @@ public class Fuzzer {
 			URL pageUrl = page.getUrl();
 			String href = a.getHrefAttribute();
 			URL ret = addToURL(pageUrl, href);
-			if(ret != null)
+			try {
+				URI uri = new URI(ret.toString());
+				uri = uri.normalize();
+				ret = uri.toURL();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			if(ret != null && !href.equals("."))
 				retVal.add(ret);
 		}
 
