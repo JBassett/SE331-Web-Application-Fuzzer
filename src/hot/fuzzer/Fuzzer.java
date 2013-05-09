@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
@@ -22,6 +23,8 @@ import com.gargoylesoftware.htmlunit.CollectingAlertHandler;
 import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
+import com.gargoylesoftware.htmlunit.html.HtmlButton;
+import com.gargoylesoftware.htmlunit.html.HtmlElement;
 import com.gargoylesoftware.htmlunit.html.HtmlForm;
 import com.gargoylesoftware.htmlunit.html.HtmlInput;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
@@ -406,7 +409,7 @@ public class Fuzzer {
 	}
 	
 	public HtmlPage logIntoDVWA(String username, String password) throws MalformedURLException, IOException{
-		String host = "http://localhost/";
+		String host = "http://10.211.55.3/";
 		String path = "dvwa/login.php";
 		
 		HtmlPage p = getPage(host+path);
@@ -448,15 +451,45 @@ public class Fuzzer {
 		
 		return new ArrayList<Map.Entry<String,String>>(workingCombos);
 	}
+	
+	public void fuzzForm(HtmlForm f) {
+		HtmlButton button = null;
+		for (HtmlElement maybeSubmit : f.getChildElements()) {
+			if(maybeSubmit instanceof HtmlButton){
+				button = (HtmlButton) maybeSubmit;
+				break;
+			}
+		}
+		for (HtmlElement element : f.getChildElements()) {
+			if (element instanceof HtmlInput) {
+				HtmlInput i = (HtmlInput) element;
+				for (String fuzz : fuzzVectors) {
+					i.setValueAttribute(fuzz);
+					try {
+						HtmlPage p = button.click();
+						checkPageForSensitiveData(p);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
 
 	public static void main(String[] args) throws FailingHttpStatusCodeException, MalformedURLException, IOException {
 		Fuzzer theFuzz = new Fuzzer();
 		
 		HtmlPage p = theFuzz.logIntoDVWA();
 		
-		p = theFuzz.getPage("http://localhost/dvwa/index.php");
+		p = theFuzz.getPage("http://10.211.55.3/dvwa/index.php");
 		
 		theFuzz.crawlURL(p.getUrl());
+		
+		for (Entry<URL, List<HtmlForm>> entry : theFuzz.discoveredForms.entrySet()) {
+			for (HtmlForm f : entry.getValue()) {
+				theFuzz.fuzzForm(f);
+			}
+		}
 		
 		theFuzz.printReport();
 		theFuzz.close();
