@@ -28,6 +28,7 @@ import com.gargoylesoftware.htmlunit.html.HtmlElement;
 import com.gargoylesoftware.htmlunit.html.HtmlForm;
 import com.gargoylesoftware.htmlunit.html.HtmlInput;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
+import com.gargoylesoftware.htmlunit.html.HtmlSubmitInput;
 import com.gargoylesoftware.htmlunit.util.Cookie;
 
 public class Fuzzer {
@@ -409,7 +410,7 @@ public class Fuzzer {
 	}
 	
 	public HtmlPage logIntoDVWA(String username, String password) throws MalformedURLException, IOException{
-		String host = "http://10.211.55.3/";
+		String host = "http://127.0.0.1/";
 		String path = "dvwa/login.php";
 		
 		HtmlPage p = getPage(host+path);
@@ -453,12 +454,17 @@ public class Fuzzer {
 	}
 	
 	public void fuzzForm(HtmlForm f) {
-		HtmlButton button = null;
+		HtmlSubmitInput button = null;
 		for (HtmlElement maybeSubmit : f.getChildElements()) {
-			if(maybeSubmit instanceof HtmlButton){
-				button = (HtmlButton) maybeSubmit;
+			if(maybeSubmit instanceof HtmlSubmitInput){
+				button = (HtmlSubmitInput) maybeSubmit;
 				break;
 			}
+		}
+		
+		if(button == null){
+			System.err.println("No button on form: " + f.toString());
+			return;
 		}
 		for (HtmlElement element : f.getChildElements()) {
 			if (element instanceof HtmlInput) {
@@ -481,7 +487,7 @@ public class Fuzzer {
 		
 		HtmlPage p = theFuzz.logIntoDVWA();
 		
-		p = theFuzz.getPage("http://10.211.55.3/dvwa/index.php");
+		p = theFuzz.getPage("http://127.0.0.1/dvwa/index.php");
 		
 		theFuzz.crawlURL(p.getUrl());
 		
